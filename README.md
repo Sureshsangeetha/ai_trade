@@ -81,6 +81,26 @@ cp .env.example .env
 streamlit run app.py
 ```
 
+## 🌐 **Hosting Your Application**
+
+### **🚀 Quick Deployment (Recommended)**
+```bash
+python3 deploy.py
+```
+This interactive script will guide you through deploying to your preferred platform.
+
+### **☁️ Hosting Options**
+
+| Platform | Cost | Difficulty | Best For |
+|----------|------|------------|----------|
+| **Streamlit Cloud** | Free | ⭐ Easy | Personal, demos |
+| **Railway** | $5/month | ⭐⭐ Easy | Small teams |
+| **Digital Ocean** | $10/month | ⭐⭐⭐ Medium | Production |
+| **AWS/GCP/Azure** | $15+/month | ⭐⭐⭐⭐ Hard | Enterprise |
+
+### **📖 Detailed Instructions**
+See `DEPLOYMENT_GUIDE.md` for comprehensive hosting instructions for all platforms.
+
 ## 📱 Usage Guide
 
 ### 🎯 **Basic Stock Analysis**
