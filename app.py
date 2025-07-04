@@ -10,6 +10,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 import datetime
 import base64
+import os
 import streamlit.components.v1 as components
 
 # --- Helper Functions ---
@@ -144,10 +145,12 @@ top_tickers = SECTOR_TICKERS[domain]
 total_investment = st.sidebar.number_input("Total Investment Amount ($)", min_value=100, value=5000, step=100)
 
 # --- Streamlit Tabs for Bonus Features ---
-tabs = st.tabs(["Dashboard", "Backtest", "News/Sentiment", "Indicators Heatmap", "Portfolio Simulation"])
+tabs = st.tabs(["Dashboard", "Backtest", "News/Sentiment", "Indicators Heatmap", "Portfolio Simulation", "Alerts", "Reports"])
 
 # Import news and sentiment module
 from news_sentiment import get_news_with_sentiment, analyzer
+from sentiment_alerts import SentimentAlertManager
+from data_export import DataExporter
 
 with tabs[0]:
     if st.sidebar.button("Analyze & Predict"):
@@ -288,6 +291,16 @@ with tabs[2]:
                     # Display overall sentiment summary
                     if results['overall_sentiment']:
                         st.success("✅ Analysis Complete!")
+                        
+                        # Auto-store sentiment data if enabled
+                        if st.session_state.get('auto_store', False):
+                            try:
+                                from data_export import DataExporter
+                                exporter = DataExporter()
+                                exporter.store_sentiment_data(news_query, results)
+                                st.success("💾 Sentiment data stored for future reporting")
+                            except Exception as e:
+                                st.warning(f"Could not store sentiment data: {e}")
                         
                         # Metrics row
                         col1, col2, col3, col4 = st.columns(4)
@@ -455,6 +468,208 @@ with tabs[3]:
 with tabs[4]:
     st.header("Portfolio Simulation")
     st.info("Portfolio simulation coming soon! (Simulate returns based on AI allocation and show a chart)")
+
+with tabs[5]:
+    st.header("🚨 Sentiment Alerts")
+    
+    # Initialize alert manager
+    try:
+        alert_manager = SentimentAlertManager()
+        
+        # Alert management interface
+        st.subheader("Alert Management")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("#### Add New Alert")
+            new_symbol = st.text_input("Stock Symbol", value="AAPL", key="alert_symbol")
+            new_email = st.text_input("Email Address", key="alert_email")
+            
+            col1a, col1b = st.columns(2)
+            with col1a:
+                pos_threshold = st.number_input("Positive Threshold", min_value=-1.0, max_value=1.0, value=0.5, step=0.1)
+            with col1b:
+                neg_threshold = st.number_input("Negative Threshold", min_value=-1.0, max_value=1.0, value=-0.5, step=0.1)
+            
+            check_interval = st.selectbox("Check Interval", [5, 10, 15, 30, 60], index=2) * 60  # Convert to seconds
+            
+            if st.button("Add Alert", type="primary"):
+                if new_symbol and new_email:
+                    alert_manager.add_alert(
+                        symbol=new_symbol,
+                        threshold_positive=pos_threshold,
+                        threshold_negative=neg_threshold,
+                        email=new_email,
+                        check_interval=check_interval
+                    )
+                    st.success(f"✅ Alert added for {new_symbol}")
+                    st.rerun()
+                else:
+                    st.error("Please provide both symbol and email address")
+        
+        with col2:
+            st.markdown("#### Current Alerts")
+            if alert_manager.alerts:
+                for i, alert in enumerate(alert_manager.alerts):
+                    with st.expander(f"{alert.symbol} - {alert.email}"):
+                        st.write(f"**Thresholds:** +{alert.threshold_positive}, {alert.threshold_negative}")
+                        st.write(f"**Check Interval:** {alert.check_interval // 60} minutes")
+                        
+                        if alert.last_checked:
+                            st.write(f"**Last Checked:** {alert.last_checked.strftime('%Y-%m-%d %H:%M:%S')}")
+                        if alert.last_sentiment is not None:
+                            st.write(f"**Last Sentiment:** {alert.last_sentiment:.3f}")
+                        
+                        st.write(f"**Alerts Triggered:** {len(alert.alert_history)}")
+                        
+                        if st.button(f"Remove {alert.symbol}", key=f"remove_{i}"):
+                            alert_manager.remove_alert(alert.symbol)
+                            st.success(f"Removed alert for {alert.symbol}")
+                            st.rerun()
+            else:
+                st.info("No alerts configured yet")
+        
+        # Alert summary
+        st.subheader("Alert Summary")
+        summary = alert_manager.get_alert_summary()
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Total Alerts", summary['total_alerts'])
+        with col2:
+            st.metric("Active Alerts", summary['active_alerts'])
+        with col3:
+            st.metric("Alerts Today", summary['alerts_triggered_today'])
+        
+        # Manual alert check
+        st.subheader("Manual Alert Check")
+        if st.button("🔍 Check All Alerts Now"):
+            with st.spinner("Checking all alerts..."):
+                alert_manager.check_all_alerts()
+                st.success("✅ Alert check completed")
+        
+        # Recent alert history
+        if summary['alerts']:
+            st.subheader("Recent Alert Activity")
+            for alert_info in summary['alerts']:
+                if alert_info['alerts_today'] > 0:
+                    st.write(f"🔔 {alert_info['symbol']}: {alert_info['alerts_today']} alerts today")
+        
+    except Exception as e:
+        st.error(f"Error loading alerts: {e}")
+        st.info("Make sure all required dependencies are installed")
+
+with tabs[6]:
+    st.header("📊 Data Export & Reports")
+    
+    # Initialize data exporter
+    try:
+        exporter = DataExporter()
+        
+        # Export options
+        st.subheader("Export Options")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("#### Single Symbol Export")
+            export_symbol = st.text_input("Symbol to Export", value=symbol, key="export_symbol")
+            export_days = st.slider("Days to Include", 1, 90, 30)
+            export_format = st.selectbox("Export Format", ["CSV", "JSON", "HTML Report"])
+            
+            if st.button("📥 Export Data", type="primary"):
+                with st.spinner(f"Exporting {export_symbol} data..."):
+                    try:
+                        if export_format == "CSV":
+                            filename = exporter.export_to_csv(export_symbol, export_days)
+                        elif export_format == "JSON":
+                            filename = exporter.export_to_json(export_symbol, export_days)
+                        elif export_format == "HTML Report":
+                            filename = exporter.generate_html_report(export_symbol, export_days)
+                        
+                        if filename:
+                            st.success(f"✅ Data exported to {filename}")
+                            
+                            # Provide download link
+                            if os.path.exists(filename):
+                                with open(filename, 'rb') as file:
+                                    st.download_button(
+                                        label=f"Download {filename}",
+                                        data=file.read(),
+                                        file_name=filename,
+                                        mime="text/csv" if export_format == "CSV" else "application/json" if export_format == "JSON" else "text/html"
+                                    )
+                        else:
+                            st.error("❌ Export failed")
+                    except Exception as e:
+                        st.error(f"Export error: {e}")
+        
+        with col2:
+            st.markdown("#### Bulk Export")
+            bulk_symbols = st.text_area("Symbols (one per line)", value="AAPL\nTSLA\nGOOGL\nMSFT", key="bulk_symbols")
+            bulk_format = st.selectbox("Bulk Export Format", ["CSV", "JSON", "HTML Report"], key="bulk_format")
+            
+            if st.button("📦 Bulk Export", type="primary"):
+                symbols_list = [s.strip().upper() for s in bulk_symbols.split('\n') if s.strip()]
+                
+                if symbols_list:
+                    with st.spinner(f"Analyzing and exporting {len(symbols_list)} symbols..."):
+                        try:
+                            results = exporter.bulk_analysis_and_export(symbols_list, bulk_format.lower())
+                            
+                            successful = sum(1 for r in results.values() if r['status'] == 'success')
+                            st.success(f"✅ Successfully exported {successful}/{len(symbols_list)} symbols")
+                            
+                            # Show results
+                            for symbol, result in results.items():
+                                if result['status'] == 'success':
+                                    st.write(f"✅ {symbol}: {result['sentiment']['label']} ({result['sentiment']['average_score']:.3f})")
+                                else:
+                                    st.write(f"❌ {symbol}: {result.get('error', 'Unknown error')}")
+                        except Exception as e:
+                            st.error(f"Bulk export error: {e}")
+                else:
+                    st.error("Please enter at least one symbol")
+        
+        # Database statistics
+        st.subheader("Database Statistics")
+        stats = exporter.get_database_stats()
+        
+        if stats:
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Total Records", stats.get('total_records', 0))
+            with col2:
+                st.metric("Unique Symbols", stats.get('unique_symbols', 0))
+            with col3:
+                date_range = stats.get('date_range', {})
+                if date_range.get('earliest'):
+                    days_span = (datetime.now() - datetime.fromisoformat(date_range['earliest'])).days
+                    st.metric("Data Span (Days)", days_span)
+            
+            # Top symbols
+            if stats.get('top_symbols'):
+                st.markdown("#### Most Analyzed Symbols")
+                for symbol_data in stats['top_symbols'][:5]:
+                    st.write(f"📈 {symbol_data['symbol']}: {symbol_data['count']} records")
+        
+        # Auto-store sentiment data
+        st.subheader("⚙️ Auto-Store Settings")
+        st.info("Enable automatic storage of sentiment analysis results for future reporting")
+        
+        if 'auto_store' not in st.session_state:
+            st.session_state.auto_store = False
+        
+        auto_store = st.checkbox("Automatically store sentiment analysis results", value=st.session_state.auto_store)
+        st.session_state.auto_store = auto_store
+        
+        if auto_store:
+            st.success("✅ Auto-store enabled - sentiment data will be saved to database")
+        
+    except Exception as e:
+        st.error(f"Error loading data export features: {e}")
+        st.info("Make sure all required dependencies are installed")
 
 if st.sidebar.button("AI Portfolio Suggestion"):
     st.subheader(f"AI Portfolio Suggestion for {domain}")
