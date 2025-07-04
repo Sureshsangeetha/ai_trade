@@ -147,7 +147,7 @@ total_investment = st.sidebar.number_input("Total Investment Amount ($)", min_va
 tabs = st.tabs(["Dashboard", "Backtest", "News/Sentiment", "Indicators Heatmap", "Portfolio Simulation"])
 
 # Import news and sentiment module
-from news_sentiment import get_news_with_sentiment
+from news_sentiment import get_news_with_sentiment, analyzer
 
 with tabs[0]:
     if st.sidebar.button("Analyze & Predict"):
@@ -261,25 +261,183 @@ with tabs[1]:
         st.info("Run an analysis to see backtest results here.")
 
 with tabs[2]:
-    st.header("News & Sentiment")
-    news_source = st.selectbox("Select News Source", ["newsapi", "finnhub"])
-    news_query = st.text_input("News Query (company name or symbol)", value=symbol)
-    if st.button("Fetch News & Sentiment"):
-        with st.spinner("Fetching news and analyzing sentiment..."):
+    st.header("📰 News & Sentiment Analysis")
+    
+    # Sidebar controls for news analysis
+    st.subheader("Analysis Settings")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        news_query = st.text_input("Search Query (company name or symbol)", value=symbol)
+        include_twitter = st.checkbox("Include Twitter Sentiment", value=True)
+        
+    with col2:
+        analysis_type = st.selectbox("Analysis Type", ["Comprehensive", "News Only", "Twitter Only"])
+        days_back = st.slider("Days to look back", 1, 7, 3)
+    
+    if st.button("🚀 Analyze Sentiment", type="primary"):
+        with st.spinner("Fetching news and analyzing sentiment across multiple sources..."):
             try:
-                news_results = get_news_with_sentiment(source=news_source, query=news_query)
-                if news_results:
-                    for article in news_results:
-                        st.markdown(f"**[{article['title']}]({article['url']})**")
-                        st.write(f"Source: {article['source']}")
-                        st.write(f"Sentiment Score: {article['sentiment']:.2f}")
-                        st.write("---")
-                else:
-                    st.info("No news articles found for this query.")
+                # Get comprehensive analysis
+                if analysis_type == "Comprehensive":
+                    results = analyzer.get_comprehensive_sentiment_analysis(
+                        query=news_query, 
+                        include_twitter=include_twitter
+                    )
+                    
+                    # Display overall sentiment summary
+                    if results['overall_sentiment']:
+                        st.success("✅ Analysis Complete!")
+                        
+                        # Metrics row
+                        col1, col2, col3, col4 = st.columns(4)
+                        with col1:
+                            st.metric("Overall Sentiment", 
+                                     results['overall_sentiment']['label'],
+                                     f"{results['overall_sentiment']['average_score']:.3f}")
+                        with col2:
+                            st.metric("Confidence", 
+                                     f"{results['overall_sentiment']['confidence']:.1%}")
+                        with col3:
+                            st.metric("News Articles", 
+                                     results['sentiment_summary']['total_articles'])
+                        with col4:
+                            st.metric("Tweets Analyzed", 
+                                     results['sentiment_summary']['total_tweets'])
+                        
+                        # Sentiment distribution chart
+                        st.subheader("Sentiment Distribution")
+                        sentiment_data = {
+                            'Positive': results['sentiment_summary']['positive_percentage'],
+                            'Neutral': results['sentiment_summary']['neutral_percentage'], 
+                            'Negative': results['sentiment_summary']['negative_percentage']
+                        }
+                        st.bar_chart(sentiment_data)
+                        
+                        # News articles section
+                        if results['news_articles']:
+                            st.subheader("📑 News Articles")
+                            for i, article in enumerate(results['news_articles'][:10]):  # Show top 10
+                                with st.expander(f"{article['title'][:80]}..." if len(article['title']) > 80 else article['title']):
+                                    col1, col2 = st.columns([3, 1])
+                                    with col1:
+                                        st.write(article['description'])
+                                        st.caption(f"Source: {article['source']} | Published: {article['published_at']}")
+                                        if article['url']:
+                                            st.markdown(f"[Read Full Article]({article['url']})")
+                                    with col2:
+                                        sentiment_color = "🟢" if article['sentiment']['compound'] > 0.1 else "🔴" if article['sentiment']['compound'] < -0.1 else "🟡"
+                                        st.metric("Sentiment", 
+                                                f"{sentiment_color} {article['sentiment']['label']}", 
+                                                f"{article['sentiment']['compound']:.3f}")
+                        
+                        # Twitter sentiment section
+                        if results['twitter_sentiment'] and include_twitter:
+                            st.subheader("🐦 Twitter Sentiment")
+                            
+                            # Twitter summary metrics
+                            tweet_scores = [tweet['sentiment_compound'] for tweet in results['twitter_sentiment']]
+                            avg_twitter_sentiment = sum(tweet_scores) / len(tweet_scores) if tweet_scores else 0
+                            
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.metric("Average Twitter Sentiment", 
+                                         f"{avg_twitter_sentiment:.3f}",
+                                         "Positive" if avg_twitter_sentiment > 0 else "Negative" if avg_twitter_sentiment < 0 else "Neutral")
+                            with col2:
+                                st.metric("Total Tweets", len(results['twitter_sentiment']))
+                            
+                            # Show sample tweets
+                            st.markdown("**Recent Tweets:**")
+                            for tweet in results['twitter_sentiment'][:5]:  # Show top 5 tweets
+                                sentiment_emoji = "😊" if tweet['sentiment_compound'] > 0.1 else "😞" if tweet['sentiment_compound'] < -0.1 else "😐"
+                                st.write(f"{sentiment_emoji} {tweet['text'][:150]}..." if len(tweet['text']) > 150 else f"{sentiment_emoji} {tweet['text']}")
+                                st.caption(f"Sentiment: {tweet['sentiment_label']} ({tweet['sentiment_compound']:.2f}) | ❤️ {tweet['like_count']} | 🔄 {tweet['retweet_count']}")
+                                st.divider()
+                    
+                    else:
+                        st.warning("No sentiment data found. Please check your API keys and try again.")
+                
+                elif analysis_type == "News Only":
+                    # Legacy news analysis
+                    news_results = get_news_with_sentiment(source="newsapi", query=news_query)
+                    if news_results:
+                        for article in news_results:
+                            st.markdown(f"**[{article['title']}]({article['url']})**")
+                            st.write(f"Source: {article['source']}")
+                            sentiment_color = "🟢" if article['sentiment'] > 0.1 else "🔴" if article['sentiment'] < -0.1 else "🟡"
+                            st.write(f"Sentiment: {sentiment_color} {article['sentiment']:.2f}")
+                            st.write("---")
+                    else:
+                        st.info("No news articles found for this query.")
+                
+                elif analysis_type == "Twitter Only":
+                    # Twitter only analysis
+                    twitter_data = analyzer.fetch_twitter_sentiment(news_query)
+                    if twitter_data:
+                        st.success(f"Found {len(twitter_data)} tweets")
+                        avg_sentiment = sum(tweet['sentiment_compound'] for tweet in twitter_data) / len(twitter_data)
+                        st.metric("Average Sentiment", f"{avg_sentiment:.3f}")
+                        
+                        for tweet in twitter_data[:10]:
+                            sentiment_emoji = "😊" if tweet['sentiment_compound'] > 0.1 else "😞" if tweet['sentiment_compound'] < -0.1 else "😐"
+                            st.write(f"{sentiment_emoji} {tweet['text']}")
+                            st.caption(f"Sentiment: {tweet['sentiment_label']} | ❤️ {tweet['like_count']} | 🔄 {tweet['retweet_count']}")
+                            st.divider()
+                    else:
+                        st.info("No tweets found or Twitter API not configured.")
+                        
             except Exception as e:
-                st.error(f"Error fetching news or sentiment: {e}")
+                st.error(f"Error during sentiment analysis: {e}")
+                st.info("💡 **Tip:** Make sure you have set up your API keys in the `.env` file. See `.env.example` for the required format.")
+    
     else:
-        st.info("We're currently developing the News and Sentiment Analysis module. Integration with NewsAPI, Finnhub, and Twitter API is in progress to fetch real-time headlines and perform sentiment scoring. This feature will be available soon to enhance prediction accuracy and user insights.")
+        # Information about the feature
+        st.info("""
+        ### 🔄 **Enhanced News & Sentiment Analysis**
+        
+        This module integrates multiple data sources for comprehensive market sentiment analysis:
+        
+        **📰 News Sources:**
+        - **NewsAPI**: Real-time headlines from major news outlets
+        - **Finnhub**: Financial news and company-specific updates
+        
+        **🐦 Social Media:**
+        - **Twitter API v2**: Real-time social sentiment analysis
+        
+        **🧠 Sentiment Analysis:**
+        - **TextBlob**: Polarity and subjectivity analysis
+        - **VADER**: Social media optimized sentiment scoring
+        - **Composite Scoring**: Combined analysis for improved accuracy
+        
+        **⚙️ Setup Instructions:**
+        1. Copy `.env.example` to `.env`
+        2. Add your API keys from NewsAPI, Finnhub, and Twitter
+        3. Install requirements: `pip install -r requirements.txt`
+        4. Click "Analyze Sentiment" to get started!
+        """)
+        
+        # API Status indicators
+        st.subheader("API Status")
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            if analyzer.NEWSAPI_KEY != "your_newsapi_key_here":
+                st.success("✅ NewsAPI Configured")
+            else:
+                st.warning("⚠️ NewsAPI Not Configured")
+        
+        with col2:
+            if analyzer.FINNHUB_KEY != "your_finnhub_key_here":
+                st.success("✅ Finnhub Configured")
+            else:
+                st.warning("⚠️ Finnhub Not Configured")
+        
+        with col3:
+            if analyzer.twitter_client:
+                st.success("✅ Twitter API Configured")
+            else:
+                st.warning("⚠️ Twitter API Not Configured")
 
 with tabs[3]:
     st.header("Technical Indicators Heatmap")
@@ -333,6 +491,4 @@ if st.sidebar.button("AI Portfolio Suggestion"):
     else:
         st.warning("No suitable companies found for this domain and date range.")
 
-# News API keys (for demonstration, these should be kept secret)
-NEWSAPI_KEY='your_newsapi_key'
-FINNHUB_KEY='your_finnhub_key'
+# API keys are now managed in .env file through the news_sentiment module
