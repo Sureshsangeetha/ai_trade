@@ -98,8 +98,16 @@ This interactive script will guide you through deploying to your preferred platf
 | **Digital Ocean** | $10/month | ⭐⭐⭐ Medium | Production |
 | **AWS/GCP/Azure** | $15+/month | ⭐⭐⭐⭐ Hard | Enterprise |
 
-### **📖 Detailed Instructions**
-See `DEPLOYMENT_GUIDE.md` for comprehensive hosting instructions for all platforms.
+### **�️ Streamlit Cloud Deployment Issues?**
+If you're getting dependency errors on Streamlit Cloud:
+```bash
+python3 fix_deployment.py
+# Follow the prompts to switch to cloud-optimized version
+```
+
+### **�📖 Detailed Instructions**
+- `STREAMLIT_CLOUD_FIX.md` - Fix deployment errors
+- `DEPLOYMENT_GUIDE.md` - Comprehensive hosting guide
 
 ## 📱 Usage Guide
 

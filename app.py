@@ -147,10 +147,25 @@ total_investment = st.sidebar.number_input("Total Investment Amount ($)", min_va
 # --- Streamlit Tabs for Bonus Features ---
 tabs = st.tabs(["Dashboard", "Backtest", "News/Sentiment", "Indicators Heatmap", "Portfolio Simulation", "Alerts", "Reports"])
 
-# Import news and sentiment module
-from news_sentiment import get_news_with_sentiment, analyzer
-from sentiment_alerts import SentimentAlertManager
-from data_export import DataExporter
+# Import news and sentiment module with error handling
+try:
+    from news_sentiment import get_news_with_sentiment, analyzer
+    SENTIMENT_AVAILABLE = True
+except ImportError as e:
+    st.warning(f"Sentiment analysis features unavailable: {e}")
+    SENTIMENT_AVAILABLE = False
+    
+try:
+    from sentiment_alerts import SentimentAlertManager
+    ALERTS_AVAILABLE = True
+except ImportError:
+    ALERTS_AVAILABLE = False
+    
+try:
+    from data_export import DataExporter
+    EXPORT_AVAILABLE = True
+except ImportError:
+    EXPORT_AVAILABLE = False
 
 with tabs[0]:
     if st.sidebar.button("Analyze & Predict"):
@@ -165,17 +180,59 @@ with tabs[0]:
                 # Show OHLCV table
                 st.markdown("### Price Data (OHLCV)")
                 st.dataframe(df[['Open', 'High', 'Low', 'Close', 'Volume']].dropna().tail(30))
-                # Candlestick chart (if mplfinance is available)
+                # Enhanced charts using Plotly for better Streamlit Cloud compatibility
                 try:
-                    import mplfinance as mpf
-                    import matplotlib.pyplot as plt
-                    import io
-                    fig, ax = plt.subplots(figsize=(8,4))
-                    mpf.plot(df.tail(60), type='candle', ax=ax, mav=(20,50), volume=True, style='yahoo')
-                    buf = io.BytesIO()
-                    plt.savefig(buf, format='png')
-                    st.image(buf)
+                    import plotly.graph_objects as go
+                    from plotly.subplots import make_subplots
+                    
+                    # Create candlestick chart
+                    fig = make_subplots(
+                        rows=2, cols=1,
+                        shared_xaxes=True,
+                        vertical_spacing=0.03,
+                        subplot_titles=('Price & Moving Averages', 'Volume'),
+                        row_heights=[0.7, 0.3]
+                    )
+                    
+                    # Candlestick
+                    fig.add_trace(
+                        go.Candlestick(
+                            x=df.index,
+                            open=df['Open'],
+                            high=df['High'],
+                            low=df['Low'],
+                            close=df['Close'],
+                            name="Price"
+                        ),
+                        row=1, col=1
+                    )
+                    
+                    # Moving averages
+                    fig.add_trace(
+                        go.Scatter(x=df.index, y=df['SMA20'], name='SMA20', line=dict(color='blue')),
+                        row=1, col=1
+                    )
+                    fig.add_trace(
+                        go.Scatter(x=df.index, y=df['SMA50'], name='SMA50', line=dict(color='red')),
+                        row=1, col=1
+                    )
+                    
+                    # Volume
+                    fig.add_trace(
+                        go.Bar(x=df.index, y=df['Volume'], name='Volume', marker_color='lightblue'),
+                        row=2, col=1
+                    )
+                    
+                    fig.update_layout(
+                        title=f"{symbol} - Price Analysis",
+                        xaxis_rangeslider_visible=False,
+                        height=600
+                    )
+                    
+                    st.plotly_chart(fig, use_container_width=True)
+                    
                 except ImportError:
+                    # Fallback to simple line charts
                     st.line_chart(df[['Close', 'SMA20', 'SMA50', 'EMA20', 'EMA50']].dropna())
                 st.line_chart(df[['RSI', 'MACD', 'MACD_signal', 'ADX']].dropna())
                 st.line_chart(df[['BB_High', 'BB_Low']].dropna())
@@ -266,9 +323,18 @@ with tabs[1]:
 with tabs[2]:
     st.header("📰 News & Sentiment Analysis")
     
-    # Sidebar controls for news analysis
-    st.subheader("Analysis Settings")
-    col1, col2 = st.columns(2)
+    if not SENTIMENT_AVAILABLE:
+        st.error("❌ Sentiment analysis features are not available. This may be due to missing dependencies.")
+        st.info("""
+        To enable sentiment analysis:
+        1. Install required packages: `pip install textblob vaderSentiment tweepy`
+        2. Set up API keys in environment variables
+        3. Restart the application
+        """)
+    else:
+        # Sidebar controls for news analysis
+        st.subheader("Analysis Settings")
+        col1, col2 = st.columns(2)
     
     with col1:
         news_query = st.text_input("Search Query (company name or symbol)", value=symbol)
@@ -293,9 +359,8 @@ with tabs[2]:
                         st.success("✅ Analysis Complete!")
                         
                         # Auto-store sentiment data if enabled
-                        if st.session_state.get('auto_store', False):
+                        if st.session_state.get('auto_store', False) and EXPORT_AVAILABLE:
                             try:
-                                from data_export import DataExporter
                                 exporter = DataExporter()
                                 exporter.store_sentiment_data(news_query, results)
                                 st.success("💾 Sentiment data stored for future reporting")
@@ -472,9 +537,13 @@ with tabs[4]:
 with tabs[5]:
     st.header("🚨 Sentiment Alerts")
     
-    # Initialize alert manager
-    try:
-        alert_manager = SentimentAlertManager()
+    if not ALERTS_AVAILABLE:
+        st.error("❌ Alert features are not available due to missing dependencies.")
+        st.info("Install required packages and restart the application to enable alerts.")
+    else:
+        # Initialize alert manager
+        try:
+            alert_manager = SentimentAlertManager()
         
         # Alert management interface
         st.subheader("Alert Management")
@@ -556,16 +625,20 @@ with tabs[5]:
                 if alert_info['alerts_today'] > 0:
                     st.write(f"🔔 {alert_info['symbol']}: {alert_info['alerts_today']} alerts today")
         
-    except Exception as e:
-        st.error(f"Error loading alerts: {e}")
-        st.info("Make sure all required dependencies are installed")
+        except Exception as e:
+            st.error(f"Error loading alerts: {e}")
+            st.info("Make sure all required dependencies are installed")
 
 with tabs[6]:
     st.header("📊 Data Export & Reports")
     
-    # Initialize data exporter
-    try:
-        exporter = DataExporter()
+    if not EXPORT_AVAILABLE:
+        st.error("❌ Export and reporting features are not available due to missing dependencies.")
+        st.info("Install required packages and restart the application to enable data export.")
+    else:
+        # Initialize data exporter
+        try:
+            exporter = DataExporter()
         
         # Export options
         st.subheader("Export Options")
@@ -667,9 +740,9 @@ with tabs[6]:
         if auto_store:
             st.success("✅ Auto-store enabled - sentiment data will be saved to database")
         
-    except Exception as e:
-        st.error(f"Error loading data export features: {e}")
-        st.info("Make sure all required dependencies are installed")
+                     except Exception as e:
+            st.error(f"Error loading data export features: {e}")
+            st.info("Make sure all required dependencies are installed")
 
 if st.sidebar.button("AI Portfolio Suggestion"):
     st.subheader(f"AI Portfolio Suggestion for {domain}")

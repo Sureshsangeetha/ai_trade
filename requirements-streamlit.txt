@@ -5,6 +5,8 @@ numpy
 scikit-learn
 ta
 textblob
+vaderSentiment
+tweepy
 python-dotenv
 requests
 matplotlib

@@ -1,0 +1,48 @@
+# Environment variables
+.env
+*.key
+secrets.*
+
+# Database files
+*.db
+*.sqlite3
+
+# Logs
+*.log
+logs/
+
+# Cache
+__pycache__/
+.pytest_cache/
+.cache/
+
+# IDE
+.vscode/
+.idea/
+
+# Output directories
+exports/
+data/
+reports/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Streamlit
+.streamlit/
+
+# Python
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+*.so
+
+# Jupyter
+.ipynb_checkpoints
+
+# Virtual environments
+venv/
+env/
+ENV/
