@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Stock Market Technical Analysis & Investment Advisor</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <h1>📈 AI Stock Market Technical Analysis & Investment Advisor</h1>
+    </header>
+    <main>
+        <section class="dashboard">
+            <h2>Dashboard</h2>
+            <div id="dashboard-content">
+                <!-- Dynamic dashboard content will be loaded here -->
+            </div>
+        </section>
+        <section class="tabs">
+            <button class="tab-btn" onclick="showTab('dashboard')">Dashboard</button>
+            <button class="tab-btn" onclick="showTab('backtest')">Backtest</button>
+            <button class="tab-btn" onclick="showTab('news')">News/Sentiment</button>
+            <button class="tab-btn" onclick="showTab('heatmap')">Indicators Heatmap</button>
+            <button class="tab-btn" onclick="showTab('portfolio')">Portfolio Simulation</button>
+        </section>
+        <section id="backtest" class="tab-content">
+            <h2>Backtesting Results</h2>
+            <div id="backtest-content"></div>
+        </section>
+        <section id="news" class="tab-content">
+            <h2>News & Sentiment</h2>
+            <div id="news-content"></div>
+        </section>
+        <section id="heatmap" class="tab-content">
+            <h2>Technical Indicators Heatmap</h2>
+            <div id="heatmap-content"></div>
+        </section>
+        <section id="portfolio" class="tab-content">
+            <h2>Portfolio Simulation</h2>
+            <div id="portfolio-content"></div>
+        </section>
+    </main>
+    <footer>
+        <p>&copy; 2025 AI Stock Market Dashboard. All rights reserved.</p>
+    </footer>
+    <script src="script.js"></script>
+</body>
+</html>
