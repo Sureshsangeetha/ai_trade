@@ -10,7 +10,6 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 import datetime
 import base64
-import os
 import streamlit.components.v1 as components
 
 # --- Helper Functions ---
@@ -145,12 +144,10 @@ top_tickers = SECTOR_TICKERS[domain]
 total_investment = st.sidebar.number_input("Total Investment Amount ($)", min_value=100, value=5000, step=100)
 
 # --- Streamlit Tabs for Bonus Features ---
-tabs = st.tabs(["Dashboard", "Backtest", "News/Sentiment", "Indicators Heatmap", "Portfolio Simulation", "Alerts", "Reports"])
+tabs = st.tabs(["Dashboard", "Backtest", "News/Sentiment", "Indicators Heatmap", "Portfolio Simulation"])
 
 # Import news and sentiment module
-from news_sentiment import get_news_with_sentiment, analyzer
-from sentiment_alerts import SentimentAlertManager
-from data_export import DataExporter
+from news_sentiment import get_news_with_sentiment
 
 with tabs[0]:
     if st.sidebar.button("Analyze & Predict"):
@@ -264,193 +261,25 @@ with tabs[1]:
         st.info("Run an analysis to see backtest results here.")
 
 with tabs[2]:
-    st.header("📰 News & Sentiment Analysis")
-    
-    # Sidebar controls for news analysis
-    st.subheader("Analysis Settings")
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        news_query = st.text_input("Search Query (company name or symbol)", value=symbol)
-        include_twitter = st.checkbox("Include Twitter Sentiment", value=True)
-        
-    with col2:
-        analysis_type = st.selectbox("Analysis Type", ["Comprehensive", "News Only", "Twitter Only"])
-        days_back = st.slider("Days to look back", 1, 7, 3)
-    
-    if st.button("🚀 Analyze Sentiment", type="primary"):
-        with st.spinner("Fetching news and analyzing sentiment across multiple sources..."):
+    st.header("News & Sentiment")
+    news_source = st.selectbox("Select News Source", ["newsapi", "finnhub"])
+    news_query = st.text_input("News Query (company name or symbol)", value=symbol)
+    if st.button("Fetch News & Sentiment"):
+        with st.spinner("Fetching news and analyzing sentiment..."):
             try:
-                # Get comprehensive analysis
-                if analysis_type == "Comprehensive":
-                    results = analyzer.get_comprehensive_sentiment_analysis(
-                        query=news_query, 
-                        include_twitter=include_twitter
-                    )
-                    
-                    # Display overall sentiment summary
-                    if results['overall_sentiment']:
-                        st.success("✅ Analysis Complete!")
-                        
-                        # Auto-store sentiment data if enabled
-                        if st.session_state.get('auto_store', False):
-                            try:
-                                from data_export import DataExporter
-                                exporter = DataExporter()
-                                exporter.store_sentiment_data(news_query, results)
-                                st.success("💾 Sentiment data stored for future reporting")
-                            except Exception as e:
-                                st.warning(f"Could not store sentiment data: {e}")
-                        
-                        # Metrics row
-                        col1, col2, col3, col4 = st.columns(4)
-                        with col1:
-                            st.metric("Overall Sentiment", 
-                                     results['overall_sentiment']['label'],
-                                     f"{results['overall_sentiment']['average_score']:.3f}")
-                        with col2:
-                            st.metric("Confidence", 
-                                     f"{results['overall_sentiment']['confidence']:.1%}")
-                        with col3:
-                            st.metric("News Articles", 
-                                     results['sentiment_summary']['total_articles'])
-                        with col4:
-                            st.metric("Tweets Analyzed", 
-                                     results['sentiment_summary']['total_tweets'])
-                        
-                        # Sentiment distribution chart
-                        st.subheader("Sentiment Distribution")
-                        sentiment_data = {
-                            'Positive': results['sentiment_summary']['positive_percentage'],
-                            'Neutral': results['sentiment_summary']['neutral_percentage'], 
-                            'Negative': results['sentiment_summary']['negative_percentage']
-                        }
-                        st.bar_chart(sentiment_data)
-                        
-                        # News articles section
-                        if results['news_articles']:
-                            st.subheader("📑 News Articles")
-                            for i, article in enumerate(results['news_articles'][:10]):  # Show top 10
-                                with st.expander(f"{article['title'][:80]}..." if len(article['title']) > 80 else article['title']):
-                                    col1, col2 = st.columns([3, 1])
-                                    with col1:
-                                        st.write(article['description'])
-                                        st.caption(f"Source: {article['source']} | Published: {article['published_at']}")
-                                        if article['url']:
-                                            st.markdown(f"[Read Full Article]({article['url']})")
-                                    with col2:
-                                        sentiment_color = "🟢" if article['sentiment']['compound'] > 0.1 else "🔴" if article['sentiment']['compound'] < -0.1 else "🟡"
-                                        st.metric("Sentiment", 
-                                                f"{sentiment_color} {article['sentiment']['label']}", 
-                                                f"{article['sentiment']['compound']:.3f}")
-                        
-                        # Twitter sentiment section
-                        if results['twitter_sentiment'] and include_twitter:
-                            st.subheader("🐦 Twitter Sentiment")
-                            
-                            # Twitter summary metrics
-                            tweet_scores = [tweet['sentiment_compound'] for tweet in results['twitter_sentiment']]
-                            avg_twitter_sentiment = sum(tweet_scores) / len(tweet_scores) if tweet_scores else 0
-                            
-                            col1, col2 = st.columns(2)
-                            with col1:
-                                st.metric("Average Twitter Sentiment", 
-                                         f"{avg_twitter_sentiment:.3f}",
-                                         "Positive" if avg_twitter_sentiment > 0 else "Negative" if avg_twitter_sentiment < 0 else "Neutral")
-                            with col2:
-                                st.metric("Total Tweets", len(results['twitter_sentiment']))
-                            
-                            # Show sample tweets
-                            st.markdown("**Recent Tweets:**")
-                            for tweet in results['twitter_sentiment'][:5]:  # Show top 5 tweets
-                                sentiment_emoji = "😊" if tweet['sentiment_compound'] > 0.1 else "😞" if tweet['sentiment_compound'] < -0.1 else "😐"
-                                st.write(f"{sentiment_emoji} {tweet['text'][:150]}..." if len(tweet['text']) > 150 else f"{sentiment_emoji} {tweet['text']}")
-                                st.caption(f"Sentiment: {tweet['sentiment_label']} ({tweet['sentiment_compound']:.2f}) | ❤️ {tweet['like_count']} | 🔄 {tweet['retweet_count']}")
-                                st.divider()
-                    
-                    else:
-                        st.warning("No sentiment data found. Please check your API keys and try again.")
-                
-                elif analysis_type == "News Only":
-                    # Legacy news analysis
-                    news_results = get_news_with_sentiment(source="newsapi", query=news_query)
-                    if news_results:
-                        for article in news_results:
-                            st.markdown(f"**[{article['title']}]({article['url']})**")
-                            st.write(f"Source: {article['source']}")
-                            sentiment_color = "🟢" if article['sentiment'] > 0.1 else "🔴" if article['sentiment'] < -0.1 else "🟡"
-                            st.write(f"Sentiment: {sentiment_color} {article['sentiment']:.2f}")
-                            st.write("---")
-                    else:
-                        st.info("No news articles found for this query.")
-                
-                elif analysis_type == "Twitter Only":
-                    # Twitter only analysis
-                    twitter_data = analyzer.fetch_twitter_sentiment(news_query)
-                    if twitter_data:
-                        st.success(f"Found {len(twitter_data)} tweets")
-                        avg_sentiment = sum(tweet['sentiment_compound'] for tweet in twitter_data) / len(twitter_data)
-                        st.metric("Average Sentiment", f"{avg_sentiment:.3f}")
-                        
-                        for tweet in twitter_data[:10]:
-                            sentiment_emoji = "😊" if tweet['sentiment_compound'] > 0.1 else "😞" if tweet['sentiment_compound'] < -0.1 else "😐"
-                            st.write(f"{sentiment_emoji} {tweet['text']}")
-                            st.caption(f"Sentiment: {tweet['sentiment_label']} | ❤️ {tweet['like_count']} | 🔄 {tweet['retweet_count']}")
-                            st.divider()
-                    else:
-                        st.info("No tweets found or Twitter API not configured.")
-                        
+                news_results = get_news_with_sentiment(source=news_source, query=news_query)
+                if news_results:
+                    for article in news_results:
+                        st.markdown(f"**[{article['title']}]({article['url']})**")
+                        st.write(f"Source: {article['source']}")
+                        st.write(f"Sentiment Score: {article['sentiment']:.2f}")
+                        st.write("---")
+                else:
+                    st.info("No news articles found for this query.")
             except Exception as e:
-                st.error(f"Error during sentiment analysis: {e}")
-                st.info("💡 **Tip:** Make sure you have set up your API keys in the `.env` file. See `.env.example` for the required format.")
-    
+                st.error(f"Error fetching news or sentiment: {e}")
     else:
-        # Information about the feature
-        st.info("""
-        ### 🔄 **Enhanced News & Sentiment Analysis**
-        
-        This module integrates multiple data sources for comprehensive market sentiment analysis:
-        
-        **📰 News Sources:**
-        - **NewsAPI**: Real-time headlines from major news outlets
-        - **Finnhub**: Financial news and company-specific updates
-        
-        **🐦 Social Media:**
-        - **Twitter API v2**: Real-time social sentiment analysis
-        
-        **🧠 Sentiment Analysis:**
-        - **TextBlob**: Polarity and subjectivity analysis
-        - **VADER**: Social media optimized sentiment scoring
-        - **Composite Scoring**: Combined analysis for improved accuracy
-        
-        **⚙️ Setup Instructions:**
-        1. Copy `.env.example` to `.env`
-        2. Add your API keys from NewsAPI, Finnhub, and Twitter
-        3. Install requirements: `pip install -r requirements.txt`
-        4. Click "Analyze Sentiment" to get started!
-        """)
-        
-        # API Status indicators
-        st.subheader("API Status")
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            if analyzer.NEWSAPI_KEY != "your_newsapi_key_here":
-                st.success("✅ NewsAPI Configured")
-            else:
-                st.warning("⚠️ NewsAPI Not Configured")
-        
-        with col2:
-            if analyzer.FINNHUB_KEY != "your_finnhub_key_here":
-                st.success("✅ Finnhub Configured")
-            else:
-                st.warning("⚠️ Finnhub Not Configured")
-        
-        with col3:
-            if analyzer.twitter_client:
-                st.success("✅ Twitter API Configured")
-            else:
-                st.warning("⚠️ Twitter API Not Configured")
+        st.info("We're currently developing the News and Sentiment Analysis module. Integration with NewsAPI, Finnhub, and Twitter API is in progress to fetch real-time headlines and perform sentiment scoring. This feature will be available soon to enhance prediction accuracy and user insights.")
 
 with tabs[3]:
     st.header("Technical Indicators Heatmap")
@@ -468,208 +297,6 @@ with tabs[3]:
 with tabs[4]:
     st.header("Portfolio Simulation")
     st.info("Portfolio simulation coming soon! (Simulate returns based on AI allocation and show a chart)")
-
-with tabs[5]:
-    st.header("🚨 Sentiment Alerts")
-    
-    # Initialize alert manager
-    try:
-        alert_manager = SentimentAlertManager()
-        
-        # Alert management interface
-        st.subheader("Alert Management")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown("#### Add New Alert")
-            new_symbol = st.text_input("Stock Symbol", value="AAPL", key="alert_symbol")
-            new_email = st.text_input("Email Address", key="alert_email")
-            
-            col1a, col1b = st.columns(2)
-            with col1a:
-                pos_threshold = st.number_input("Positive Threshold", min_value=-1.0, max_value=1.0, value=0.5, step=0.1)
-            with col1b:
-                neg_threshold = st.number_input("Negative Threshold", min_value=-1.0, max_value=1.0, value=-0.5, step=0.1)
-            
-            check_interval = st.selectbox("Check Interval", [5, 10, 15, 30, 60], index=2) * 60  # Convert to seconds
-            
-            if st.button("Add Alert", type="primary"):
-                if new_symbol and new_email:
-                    alert_manager.add_alert(
-                        symbol=new_symbol,
-                        threshold_positive=pos_threshold,
-                        threshold_negative=neg_threshold,
-                        email=new_email,
-                        check_interval=check_interval
-                    )
-                    st.success(f"✅ Alert added for {new_symbol}")
-                    st.rerun()
-                else:
-                    st.error("Please provide both symbol and email address")
-        
-        with col2:
-            st.markdown("#### Current Alerts")
-            if alert_manager.alerts:
-                for i, alert in enumerate(alert_manager.alerts):
-                    with st.expander(f"{alert.symbol} - {alert.email}"):
-                        st.write(f"**Thresholds:** +{alert.threshold_positive}, {alert.threshold_negative}")
-                        st.write(f"**Check Interval:** {alert.check_interval // 60} minutes")
-                        
-                        if alert.last_checked:
-                            st.write(f"**Last Checked:** {alert.last_checked.strftime('%Y-%m-%d %H:%M:%S')}")
-                        if alert.last_sentiment is not None:
-                            st.write(f"**Last Sentiment:** {alert.last_sentiment:.3f}")
-                        
-                        st.write(f"**Alerts Triggered:** {len(alert.alert_history)}")
-                        
-                        if st.button(f"Remove {alert.symbol}", key=f"remove_{i}"):
-                            alert_manager.remove_alert(alert.symbol)
-                            st.success(f"Removed alert for {alert.symbol}")
-                            st.rerun()
-            else:
-                st.info("No alerts configured yet")
-        
-        # Alert summary
-        st.subheader("Alert Summary")
-        summary = alert_manager.get_alert_summary()
-        
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Total Alerts", summary['total_alerts'])
-        with col2:
-            st.metric("Active Alerts", summary['active_alerts'])
-        with col3:
-            st.metric("Alerts Today", summary['alerts_triggered_today'])
-        
-        # Manual alert check
-        st.subheader("Manual Alert Check")
-        if st.button("🔍 Check All Alerts Now"):
-            with st.spinner("Checking all alerts..."):
-                alert_manager.check_all_alerts()
-                st.success("✅ Alert check completed")
-        
-        # Recent alert history
-        if summary['alerts']:
-            st.subheader("Recent Alert Activity")
-            for alert_info in summary['alerts']:
-                if alert_info['alerts_today'] > 0:
-                    st.write(f"🔔 {alert_info['symbol']}: {alert_info['alerts_today']} alerts today")
-        
-    except Exception as e:
-        st.error(f"Error loading alerts: {e}")
-        st.info("Make sure all required dependencies are installed")
-
-with tabs[6]:
-    st.header("📊 Data Export & Reports")
-    
-    # Initialize data exporter
-    try:
-        exporter = DataExporter()
-        
-        # Export options
-        st.subheader("Export Options")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown("#### Single Symbol Export")
-            export_symbol = st.text_input("Symbol to Export", value=symbol, key="export_symbol")
-            export_days = st.slider("Days to Include", 1, 90, 30)
-            export_format = st.selectbox("Export Format", ["CSV", "JSON", "HTML Report"])
-            
-            if st.button("📥 Export Data", type="primary"):
-                with st.spinner(f"Exporting {export_symbol} data..."):
-                    try:
-                        if export_format == "CSV":
-                            filename = exporter.export_to_csv(export_symbol, export_days)
-                        elif export_format == "JSON":
-                            filename = exporter.export_to_json(export_symbol, export_days)
-                        elif export_format == "HTML Report":
-                            filename = exporter.generate_html_report(export_symbol, export_days)
-                        
-                        if filename:
-                            st.success(f"✅ Data exported to {filename}")
-                            
-                            # Provide download link
-                            if os.path.exists(filename):
-                                with open(filename, 'rb') as file:
-                                    st.download_button(
-                                        label=f"Download {filename}",
-                                        data=file.read(),
-                                        file_name=filename,
-                                        mime="text/csv" if export_format == "CSV" else "application/json" if export_format == "JSON" else "text/html"
-                                    )
-                        else:
-                            st.error("❌ Export failed")
-                    except Exception as e:
-                        st.error(f"Export error: {e}")
-        
-        with col2:
-            st.markdown("#### Bulk Export")
-            bulk_symbols = st.text_area("Symbols (one per line)", value="AAPL\nTSLA\nGOOGL\nMSFT", key="bulk_symbols")
-            bulk_format = st.selectbox("Bulk Export Format", ["CSV", "JSON", "HTML Report"], key="bulk_format")
-            
-            if st.button("📦 Bulk Export", type="primary"):
-                symbols_list = [s.strip().upper() for s in bulk_symbols.split('\n') if s.strip()]
-                
-                if symbols_list:
-                    with st.spinner(f"Analyzing and exporting {len(symbols_list)} symbols..."):
-                        try:
-                            results = exporter.bulk_analysis_and_export(symbols_list, bulk_format.lower())
-                            
-                            successful = sum(1 for r in results.values() if r['status'] == 'success')
-                            st.success(f"✅ Successfully exported {successful}/{len(symbols_list)} symbols")
-                            
-                            # Show results
-                            for symbol, result in results.items():
-                                if result['status'] == 'success':
-                                    st.write(f"✅ {symbol}: {result['sentiment']['label']} ({result['sentiment']['average_score']:.3f})")
-                                else:
-                                    st.write(f"❌ {symbol}: {result.get('error', 'Unknown error')}")
-                        except Exception as e:
-                            st.error(f"Bulk export error: {e}")
-                else:
-                    st.error("Please enter at least one symbol")
-        
-        # Database statistics
-        st.subheader("Database Statistics")
-        stats = exporter.get_database_stats()
-        
-        if stats:
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Total Records", stats.get('total_records', 0))
-            with col2:
-                st.metric("Unique Symbols", stats.get('unique_symbols', 0))
-            with col3:
-                date_range = stats.get('date_range', {})
-                if date_range.get('earliest'):
-                    days_span = (datetime.now() - datetime.fromisoformat(date_range['earliest'])).days
-                    st.metric("Data Span (Days)", days_span)
-            
-            # Top symbols
-            if stats.get('top_symbols'):
-                st.markdown("#### Most Analyzed Symbols")
-                for symbol_data in stats['top_symbols'][:5]:
-                    st.write(f"📈 {symbol_data['symbol']}: {symbol_data['count']} records")
-        
-        # Auto-store sentiment data
-        st.subheader("⚙️ Auto-Store Settings")
-        st.info("Enable automatic storage of sentiment analysis results for future reporting")
-        
-        if 'auto_store' not in st.session_state:
-            st.session_state.auto_store = False
-        
-        auto_store = st.checkbox("Automatically store sentiment analysis results", value=st.session_state.auto_store)
-        st.session_state.auto_store = auto_store
-        
-        if auto_store:
-            st.success("✅ Auto-store enabled - sentiment data will be saved to database")
-        
-    except Exception as e:
-        st.error(f"Error loading data export features: {e}")
-        st.info("Make sure all required dependencies are installed")
 
 if st.sidebar.button("AI Portfolio Suggestion"):
     st.subheader(f"AI Portfolio Suggestion for {domain}")
@@ -706,4 +333,6 @@ if st.sidebar.button("AI Portfolio Suggestion"):
     else:
         st.warning("No suitable companies found for this domain and date range.")
 
-# API keys are now managed in .env file through the news_sentiment module
+# News API keys (for demonstration, these should be kept secret)
+NEWSAPI_KEY='your_newsapi_key'
+FINNHUB_KEY='your_finnhub_key'
